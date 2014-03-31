@@ -1,0 +1,169 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function mymodel_schema() {
+
+  $schema['order_line'] = array(
+    'mysql_engine' => 'INNODB',
+    'description' => 'The base table for order lines',
+    'fields' => array(
+      'olid' => array(
+        'description' => 'The primary identifier for a order line.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'pid' => array(
+        'description' => 'The {product}.pid product included in this order line',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'price' => array(
+        'description' => 'The price of product taken from product when order is created.',
+        'type' => 'float',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'quantity' => array(
+        'description' => 'The quantity of product in product line.',
+        'type' => 'float',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'total' => array(
+        'description' => 'The sum of order line calculated by price X quantity.',
+        'type' => 'float',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'oid' => array(
+        'description' => 'The {orders}.oid order that owns this order line',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+       'oid' => array('oid'),
+      ),
+    'foreign keys' => array(
+      'order' => array(
+        'table' => 'orders',
+        'columns' => array('oid' => 'oid'),
+      ),
+      'product' => array(
+        'table' => 'product',
+        'columns' => array('pid' => 'pid'),
+      ),
+     ),
+    'primary key' => array('olid'),
+  );
+
+  $schema['orders'] = array(
+    'mysql_engine' => 'INNODB',
+    'description' => 'The base table for orders',
+    'fields' => array(
+      'oid' => array(
+        'description' => 'The primary identifier for a order.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the order was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'total' => array(
+        'description' => 'The sum of order lines calculated by price X quantity.',
+        'type' => 'float',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid customer that owns this order.',
+        'type' => 'int',
+        'length' => 10,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+       'uid' => array('uid'),
+      ),
+    'foreign keys' => array(
+      'order_author' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+     ),
+    'primary key' => array('oid'),
+  );
+
+  $schema['product'] = array(
+    'mysql_engine' => 'INNODB',
+    'description' => 'The base table for product',
+    'fields' => array(
+      'pid' => array(
+        'description' => 'The primary identifier for a product.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The name of this product, always treated as non-markup plain text.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'price' => array(
+        'description' => 'The price of product taken from product when order is created.',
+        'type' => 'float',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'description' => array(
+        'description' => 'The description of this product.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'big',
+      ),
+    ),
+    'primary key' => array('pid'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function mymodel_install() {
+  // Change engine for table users.
+  db_query('ALTER TABLE users ENGINE=InnoDB;');
+
+  // Fix column uid in table orders to enable to create contraint with users.
+  db_query('ALTER TABLE orders DROP COLUMN uid;');
+  db_query("ALTER TABLE orders ADD COLUMN uid int(10) unsigned NOT NULL DEFAULT '0' COMMENT 'The users.uid customer that owns this order.'");
+  db_query('ALTER TABLE orders ADD CONSTRAINT order_author FOREIGN KEY (uid) REFERENCES users(uid);');
+
+  // Fix column oid in table order_line to enable to create contraint with orders.
+  db_query('ALTER TABLE order_line DROP COLUMN oid;');
+  db_query("ALTER TABLE order_line ADD COLUMN oid int(10) unsigned NOT NULL DEFAULT '0' COMMENT 'The {orders}.oid order that owns this order line'");
+  db_query('ALTER TABLE order_line ADD CONSTRAINT `order` FOREIGN KEY (oid) REFERENCES orders(oid);');
+
+  // Fix column pid in table order_line to enable to create contraint with product.
+  db_query('ALTER TABLE order_line DROP COLUMN pid;');
+  db_query("ALTER TABLE order_line ADD COLUMN pid int(10) unsigned NOT NULL DEFAULT '0' COMMENT 'The {product}.pid product included in this order line'");
+  db_query('ALTER TABLE order_line ADD CONSTRAINT product FOREIGN KEY (pid) REFERENCES product(pid);');
+}

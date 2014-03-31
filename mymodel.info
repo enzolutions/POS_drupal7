@@ -1,0 +1,6 @@
+name = MyModel Demo
+description = An example to create a custom DB model in Drupal.
+;dependencies[] = backbone
+;dependencies[] = backbone_services
+package = DrupalCamp MX
+core = 7.x
