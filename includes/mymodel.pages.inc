@@ -51,7 +51,11 @@ function mymodel_orders_list($form, &$form_state) {
     );
   }
 
-  $form['accounts'] = array(
+  $form['add'] = array(
+    '#markup' => l(t('Add Order'), 'node/add/order'),
+  );
+
+  $form['orders'] = array(
     '#type' => 'tableselect',
     '#header' => $header,
     '#options' => $options,
@@ -61,15 +65,82 @@ function mymodel_orders_list($form, &$form_state) {
   return $form;
 }
 
+/*
+ * Function to create a list of products.
+ */
+function mymodel_products_list($form, &$form_state) {
+
+  drupal_add_css(drupal_get_path('module', 'mymodel') .'/styles/mymodel.css', 'file');
+
+  $header = array(
+    'product_id' => array('data' => t('Product #')),
+    'name' => array('data' => t('Name')),
+    'price' => array('data' => t('Price')),
+    'operations' => array('data' => t('Operations')),
+  );
+
+  $options = array();
+
+  $query = db_select('product','p');
+  $query->fields('p');
+  $query->OrderBy('p.pid', 'DESC');
+
+  $result = $query->execute();
+  //print "\nQuery\n";
+  //_dpq($query); // Display the query.
+
+  $destination = drupal_get_destination();
+
+  foreach($result as $product) {
+    $options[] = array(
+      'product_id' => $product->pid,
+      'name' => $product->name,
+      'price' => $product->price,
+      'operations' => array('data' => array(
+                                        'edit' => array(
+                                            '#type' => 'link',
+                                            '#title' => t('edit'),
+                                            '#href' => "product/$product->pid/edit",
+                                            '#options' => array('query' => $destination)
+                                            ),
+                                        'delete' => array(
+                                            '#type' => 'link',
+                                            '#title' => t('delete'),
+                                            '#href' => "product/$product->pid/delete",
+                                            '#options' => array('query' => $destination)
+                                            ),
+                                        ),
+                      ),
+    );
+  }
+
+  $form['add'] = array(
+    '#markup' => l(t('Add Product'), 'node/add/product'),
+  );
+
+  $form['orders'] = array(
+    '#type' => 'tableselect',
+    '#header' => $header,
+    '#options' => $options,
+    '#empty' => t('No products available.'),
+  );
+
+  return $form;
+}
 
 /*
- * Function to create form to add an order.
+ * Function to create form to add/edit an order.
  */
 function mymodel_order($form, &$form_state, $order_id = NULL) {
 
    drupal_add_js(drupal_get_path('module', 'mymodel') .'/js/mymodel.js', 'file');
 
-   if($order_id) {
+   $form['add'] = array(
+    '#markup' => l(t('Add Product'), 'node/add/product'),
+    );
+
+
+   if($order_id && !isset($form_state['triggering_element']['#value'])) {
     $form_state['storage']['order_id'] = $order_id;
     $query = db_select('order_line','ol');
     $query->fields('ol');
@@ -87,16 +158,17 @@ function mymodel_order($form, &$form_state, $order_id = NULL) {
     }
 
     $form_state['storage']['lines'] = $lines;
-   } else {
-    if(!isset($form_state['storage']['lines']))
+
+   }
+   elseif(!isset($form_state['storage']['lines'])) {
       $form_state['storage']['lines'] = 1;
    }
 
    $form['order_lines_wrapper'] = array(
      '#type' => 'fieldset',
      '#title' => t('Order Lines'),
-     '#collapsible' => TRUE,
-     '#collapsed' => TRUE,
+     '#collapsible' => FALSE,
+     '#collapsed' => FALSE,
    );
 
    $form['order_lines_wrapper']['order_lines'] = array(
@@ -115,7 +187,24 @@ function mymodel_order($form, &$form_state, $order_id = NULL) {
 
    $options = array();
    $total = 0;
-   for ($i = 1; $i <= $form_state['storage']['lines']; $i++) {
+
+   // Detect if deleted button was press.
+   $deleted = 0;
+   $lines = $form_state['storage']['lines'];
+   if(isset($form_state['triggering_element']['#value']) &&
+    $form_state['triggering_element']['#value'] == 'Delete selected') {
+    $deleted=0;
+    $lines--;
+   }
+
+   for ($i = 1; $i <= $lines; $i++) {
+    // Remove selected lines, requiere a math due a reserve order
+    // to maintain new line at the top
+    if(isset($form_state['values']['order_lines']['table']) && $form_state['values']['order_lines']['table'][$form_state['storage']['lines'] - $i - 1]) {
+      $deleted++;
+      continue;
+    }
+
     $options[$i] =array
     (
       'product' => array(
@@ -181,7 +270,8 @@ function mymodel_order($form, &$form_state, $order_id = NULL) {
 
   $options[] = array('product' => '', 'price' => '', 'quantity' => t('Total') , 'subtotal' => t('$') . round($total,2));
 
-  $form_state['storage']['lines'] = $i;
+  // Remove lines if were deleted
+  $form_state['storage']['lines'] = $i - $deleted;
 
   $form['order_lines_wrapper']['order_lines']['table'] = array
   (
@@ -207,6 +297,20 @@ function mymodel_order($form, &$form_state, $order_id = NULL) {
        ),
     );
 
+   $form['delete_selected'] = array
+    (
+      '#type' => 'button',
+      '#value' => t('Delete selected'),
+      '#ajax' => array(
+       'callback' => 'mymodel_ajax_add_lines',
+       'wrapper' => 'order_lines',
+       ),
+    );
+
+  $form['orders'] = array(
+    '#markup' => l(t('List of Orders'), 'orders'),
+  );
+
   return $form;
 }
 
@@ -217,13 +321,31 @@ function mymodel_ajax_add_lines($form, &$form_state) {
 /*
  * Function to handle submit of form to add an order.
  */
-function mymodel_add_order_submit($form, &$form_state) {
+function mymodel_order_submit($form, &$form_state) {
   global $user;
 
-  $order_id = NULL;
+  $order_id = isset($form_state['storage']['order_id'])? $form_state['storage']['order_id']: NULL;
   $order = NULL;
   $order_total=0;
+
+  // Delete previous order lines in edit process
+  if($order_id) {
+    // Delete order lines first to avoid broke the relation
+    db_delete('order_line')
+      ->condition('oid', $order_id)
+      ->execute();
+
+    $order = new stdclass();
+    $order->uid = $user->uid;
+    $order->oid = $order_id;
+  }
+
   for ($i = 1; $i <= $form_state['storage']['lines']; $i++) {
+
+    if(!isset($form_state['input']['product_' . $i])) {
+      continue;
+    }
+
     $product_item = $form_state['input']['product_' . $i];
     $price = $form_state['input']['price_' . $i];
     $quantity = $form_state['input']['quantity_' . $i];
@@ -234,9 +356,16 @@ function mymodel_add_order_submit($form, &$form_state) {
         $order->created = time();
         $order->uid = $user->uid;
         drupal_write_record('orders', $order);
+        drupal_set_message('Ordes was created sucessfuly');
         $order_id = $order->oid;
       }
+
+      if(empty($product_item)) {
+        continue;
+      }
+
       list($pid, $name) = explode(":", $product_item);
+
       $order_line = new stdclass();
       $order_line->oid = $order_id;
       $order_line->pid = $pid;
@@ -251,31 +380,47 @@ function mymodel_add_order_submit($form, &$form_state) {
   if($order_id) {
     $order->total = $order_total;
     drupal_write_record('orders', $order, 'oid');
-    drupal_set_message('Ordes was created sucessfuly');
+    drupal_set_message('Ordes was updated sucessfuly');
   }
 }
 
 /*
- * Function to create form to add a product.
+ * Function to create form to add/edit a product.
  */
-function mymodel_add_product($form, &$form_state) {
+function mymodel_product($form, &$form_state, $product_id = NULL) {
+
+  drupal_add_css(drupal_get_path('module', 'mymodel') .'/styles/mymodel.css', 'file');
+
+  $product = new stdclass();
+  $product->name = '';
+  $product->price ='';
+  $product->description = '';
+
+  if($product_id) {
+    $form_state['storage']['product_id'] = $product_id;
+    $query = db_select('product','p');
+    $query->fields('p');
+    $query->condition('p.pid', $product_id);
+    $product = $query->execute()->fetch();
+  }
+
   $form['name'] = array(
     '#type' => 'textfield',
     '#title' => t('Name'),
-    '#default_value' => '',
+    '#default_value' => $product->name,
     '#required' => TRUE,
   );
 
   $form['description'] = array(
     '#type' => 'textarea',
     '#title' => t('Description'),
-    '#default_value' => '',
+    '#default_value' => $product->description,
   );
 
   $form['price'] = array(
     '#type' => 'textfield',
     '#title' => t('Price'),
-    '#default_value' => '',
+    '#default_value' => $product->price,
     '#element_validate' => array('element_validate_number'),
   );
 
@@ -285,20 +430,97 @@ function mymodel_add_product($form, &$form_state) {
       '#value' => t('Save Product'),
     );
 
+  $form['product_list'] = array(
+    '#markup' => l(t('List of products'), 'products'),
+  );
+
+  $form['add_order'] = array(
+    '#markup' => l(t('Add Order'), 'node/add/order'),
+  );
+
   return $form;
 }
 
 /*
  * Function to handle submit of form to add a product.
  */
-function mymodel_add_product_submit($form, &$form_state) {
+function mymodel_product_submit($form, &$form_state) {
   $product = new stdclass();
   $product->name = $form_state['values']['name'];
   $product->description = $form_state['values']['description'];
   $product->price = $form_state['values']['price'];
 
-  drupal_write_record('product',$product);
-  drupal_set_message(t('Product was created sucessfully'));
+  if(isset($form_state['storage']['product_id'])) {
+    $product->pid = $form_state['storage']['product_id'];
+    drupal_write_record('product',$product, 'pid');
+    drupal_set_message(t('Product was updated sucessfully'));
+  }
+  else {
+    drupal_write_record('product',$product);
+    drupal_set_message(t('Product was created sucessfully'));
+  }
+}
+
+/*
+ * Confirmation page to delete a product.
+ */
+function mymodel_product_delete($form, &$form_state, $product_id) {
+
+  global $base_url;
+
+  $form_state['storage']['pid'] = $product_id;
+
+  // Get product information
+  $query = db_select('product','p');
+  $query->fields('p');
+  $query->condition('p.pid', $product_id);
+  $product = $query->execute()->fetch();
+
+  // Verify if product is used in current orders
+  $query = db_select('order_line','ol');
+  $query->fields('ol', array('oid'));
+  $query->condition('ol.pid', $product_id);
+  $query->groupBy('ol.oid');
+  //_dpq($query);
+  $result = $query->execute();
+
+  if($result->rowCount()) {
+    $form['orders_related_to_product'] = array(
+      '#type' => 'fieldset',
+      '#title' => t("Product !product can't be deleted becuase is related with following orders", array('!product' => $product->name)),
+    );
+    foreach ($result as $order) {
+      $form['orders_related_to_product'][$order->oid] = array(
+          '#type' => 'link',
+          '#title' => 'Order # ' . $order->oid,
+          '#href' => 'order/' . $order->oid . '/edit',
+          '#prefix' => '<div>',
+          '#suffix' => '</div>',
+          );
+    }
+
+    return $form;
+  }
+
+  $form['instructions'] = array(
+    '#type' => 'markup',
+    '#markup' => '<div class="container-instructions">' . t('You cannot undo this action') . '</div>',
+  );
+
+
+  $confirmation_form = confirm_form($form, t('Are you sure you want to delete this product?'), $base_url, t('DELETE Product: ') . $product->name,t('Yes'), t('No'));
+
+  return $confirmation_form;
+}
+
+function mymodel_product_delete_submit($form, &$form_state) {
+  // Delete product
+  db_delete('product')
+    ->condition('pid', $form_state['storage']['pid'])
+    ->execute();
+
+  drupal_set_message(t('Product was deleted successfully'));
+  $form_state['redirect']  = drupal_get_destination();
 }
 
 /**

@@ -26,7 +26,16 @@ function mymodel_menu() {
   $items['node/add/product'] = array(
     'title' => 'Add a Product',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('mymodel_add_product'),
+    'page arguments' => array('mymodel_product'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'includes/mymodel.pages.inc',
+  );
+
+  $items['products'] = array(
+    'title' => 'List of products',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('mymodel_products_list'),
     'access arguments' => array('access administration pages'),
     'type' => MENU_NORMAL_ITEM,
     'file' => 'includes/mymodel.pages.inc',
@@ -50,6 +59,23 @@ function mymodel_menu() {
     'file' => 'includes/mymodel.pages.inc',
   );
 
+  $items['product/%/edit'] = array(
+    'title' => 'Edit an Product',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('mymodel_product',1),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'includes/mymodel.pages.inc',
+  );
+
+  $items['product/%/delete'] = array(
+    'title' => 'Delete an Product',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('mymodel_product_delete',1),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+    'file' => 'includes/mymodel.pages.inc',
+  );
   $items['product/autocomplete'] = array(
   'page callback' => '_mymodel_product_autocomplete',
   'access arguments' => array('access content'),
