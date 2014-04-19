@@ -193,7 +193,6 @@ function mymodel_order($form, &$form_state, $order_id = NULL) {
    $lines = $form_state['storage']['lines'];
    if(isset($form_state['triggering_element']['#value']) &&
     $form_state['triggering_element']['#value'] == 'Delete selected') {
-    $deleted=0;
     $lines--;
    }
 
