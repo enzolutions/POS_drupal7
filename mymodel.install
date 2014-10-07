@@ -166,4 +166,17 @@ function mymodel_install() {
   db_query('ALTER TABLE order_line DROP COLUMN pid;');
   db_query("ALTER TABLE order_line ADD COLUMN pid int(10) unsigned NOT NULL DEFAULT '0' COMMENT 'The {product}.pid product included in this order line'");
   db_query('ALTER TABLE order_line ADD CONSTRAINT product FOREIGN KEY (pid) REFERENCES product(pid);');
+
+  //Add menu orders in main menu
+  $item = array(
+    'menu_name' => 'main-menu',
+    'link_path' => 'orders',
+    'router_path' => 'orders',
+    'link_title' => 'Orders',
+    'weight' => 1,
+    'customized' => 1,
+  );
+
+  $mlid = menu_link_save($item);
+
 }
